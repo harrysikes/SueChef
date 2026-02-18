@@ -9,21 +9,27 @@ interface PantryItemRowProps {
 }
 
 export default function PantryItemRow({ item, onUpdate, onDelete }: PantryItemRowProps) {
-  const isExpiringSoon = item.expirationDate
-    ? dayjs(item.expirationDate).diff(dayjs(), 'days') <= 3 && dayjs(item.expirationDate).diff(dayjs(), 'days') >= 0
+  const date = item.expirationDate || item.bestByDate;
+  const isExpiringSoon = date
+    ? dayjs(date).diff(dayjs(), 'days') <= 3 && dayjs(date).diff(dayjs(), 'days') >= 0
     : false;
-
-  const isExpired = item.expirationDate ? dayjs(item.expirationDate).isBefore(dayjs()) : false;
+  const isExpired = date ? dayjs(date).isBefore(dayjs()) : false;
 
   return (
     <View style={[styles.row, isExpiringSoon && styles.rowExpiring, isExpired && styles.rowExpired]}>
       <View style={styles.content}>
         <Text style={styles.name}>{item.name}</Text>
         {item.quantity && <Text style={styles.quantity}>{item.quantity}</Text>}
+        {item.remainingQuantity && (
+          <Text style={styles.remaining}>Left: {item.remainingQuantity}</Text>
+        )}
         {item.expirationDate && (
           <Text style={[styles.expiration, isExpired && styles.expirationExpired]}>
             {isExpired ? 'Expired' : 'Expires'}: {dayjs(item.expirationDate).format('MMM D, YYYY')}
           </Text>
+        )}
+        {item.bestByDate && !item.expirationDate && (
+          <Text style={styles.expiration}>Best by: {dayjs(item.bestByDate).format('MMM D, YYYY')}</Text>
         )}
         <Text style={styles.source}>Source: {item.source}</Text>
       </View>
@@ -66,6 +72,12 @@ const styles = StyleSheet.create({
   quantity: {
     fontSize: 15,
     color: '#8E8E93',
+    marginBottom: 4,
+    fontFamily: 'System',
+  },
+  remaining: {
+    fontSize: 14,
+    color: '#0A7EA4',
     marginBottom: 4,
     fontFamily: 'System',
   },

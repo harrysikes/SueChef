@@ -8,8 +8,11 @@ export interface PantryItem {
   userId: string;
   name: string;
   quantity?: string;
+  /** e.g. "half", "3/4 container", "2 cups left" — for use-up suggestions */
+  remainingQuantity?: string;
   expirationDate?: Date;
-  source: 'manual' | 'grocery' | 'assumed';
+  bestByDate?: Date;
+  source: 'manual' | 'grocery' | 'assumed' | 'receipt_scan';
 }
 
 interface PantryState {
@@ -28,11 +31,14 @@ export const usePantryStore = create<PantryState>((set, get) => ({
     const { user } = useAuthStore.getState();
     if (!user) return;
 
-    const docRef = await addDoc(collection(db, 'pantryItems'), {
+    const payload: Record<string, unknown> = {
       ...item,
       userId: user.uid,
       createdAt: new Date(),
-    });
+    };
+    if (item.expirationDate) payload.expirationDate = item.expirationDate;
+    if (item.bestByDate) payload.bestByDate = item.bestByDate;
+    const docRef = await addDoc(collection(db, 'pantryItems'), payload);
 
     set((state) => ({
       items: [...state.items, { ...item, id: docRef.id, userId: user.uid }],
@@ -60,11 +66,15 @@ export const usePantryStore = create<PantryState>((set, get) => ({
 
     const q = query(collection(db, 'pantryItems'), where('userId', '==', user.uid));
     const snapshot = await getDocs(q);
-    const items = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-      expirationDate: doc.data().expirationDate?.toDate(),
-    })) as PantryItem[];
+    const items = snapshot.docs.map((doc) => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        ...d,
+        expirationDate: d.expirationDate?.toDate(),
+        bestByDate: d.bestByDate?.toDate(),
+      };
+    }) as PantryItem[];
 
     set({ items });
   },

@@ -1,10 +1,13 @@
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
-import { useRouter } from 'expo-router';
-import { sendMessageToSue } from '@/services/ai';
+import { sendMessageToSue, recipeToNumberedSteps } from '@/services/ai';
+import { pickImage, takePhoto, scanRecipeImage } from '@/services/vision';
 import { usePantryStore } from '@/store/pantryStore';
 import { useMealStore } from '@/store/mealStore';
 import { useGroceryStore } from '@/store/groceryStore';
+import { useUserPreferencesStore } from '@/store/userPreferencesStore';
+import { Ionicons } from '@expo/vector-icons';
+import { colors } from '@/theme';
 
 interface Message {
   id: string;
@@ -13,8 +16,7 @@ interface Message {
   timestamp: Date;
 }
 
-export default function CookingModeScreen() {
-  const router = useRouter();
+export default function CookingScreen() {
   const [recipe, setRecipe] = useState('');
   const [currentStep, setCurrentStep] = useState(0);
   const [steps, setSteps] = useState<string[]>([]);
@@ -24,35 +26,22 @@ export default function CookingModeScreen() {
   const { items: pantryItems } = usePantryStore();
   const { meals } = useMealStore();
   const { lists: groceryLists } = useGroceryStore();
+  const { allergies, standardItems } = useUserPreferencesStore();
 
-  const handleStartCooking = async () => {
-    if (!recipe.trim()) {
-      Alert.alert('Error', 'Please enter a recipe');
-      return;
-    }
-
+  const processRecipeText = async (recipeText: string) => {
+    if (!recipeText.trim()) return;
     setLoading(true);
     try {
-      const response = await sendMessageToSue(
-        `Convert this recipe into simple step-by-step instructions for a beginner cook: ${recipe}`,
-        pantryItems,
-        meals,
-        groceryLists
-      );
-
-      // Try to extract steps from response
-      const extractedSteps = response
-        .split(/\d+\.|\n-|\n\*/)
-        .filter((step) => step.trim().length > 10)
-        .map((step) => step.trim())
-        .slice(0, 10);
-
+      const stepsText = await recipeToNumberedSteps(recipeText);
+      const extractedSteps = stepsText
+        .split(/(?:\r?\n\s*)\d+\.\s*/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 5);
       if (extractedSteps.length > 0) {
         setSteps(extractedSteps);
         setCurrentStep(0);
       } else {
-        // Fallback: split by newlines
-        setSteps([response]);
+        setSteps([stepsText]);
         setCurrentStep(0);
       }
     } catch (error: any) {
@@ -60,6 +49,49 @@ export default function CookingModeScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStartCooking = async () => {
+    if (!recipe.trim()) {
+      Alert.alert('Error', 'Please enter or scan a recipe');
+      return;
+    }
+    await processRecipeText(recipe);
+  };
+
+  const runRecipeScan = async (uri: string) => {
+    setLoading(true);
+    try {
+      const recipeText = await scanRecipeImage(uri);
+      if (!recipeText.trim()) {
+        Alert.alert('No recipe found', 'We couldn\'t read a recipe from this image. Try a clearer photo.');
+        return;
+      }
+      setRecipe(recipeText);
+      await processRecipeText(recipeText);
+    } catch (error: any) {
+      Alert.alert('Scan failed', error.message || 'Could not read recipe from image.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleScanRecipe = () => {
+    Alert.alert(
+      'Scan recipe',
+      'Take a photo or choose from your library',
+      [
+        { text: 'Take photo', onPress: async () => {
+          const uri = await takePhoto();
+          if (uri) await runRecipeScan(uri);
+        }},
+        { text: 'Choose from library', onPress: async () => {
+          const uri = await pickImage();
+          if (uri) await runRecipeScan(uri);
+        }},
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
   };
 
   const handleAskQuestion = async () => {
@@ -81,7 +113,8 @@ export default function CookingModeScreen() {
         `I'm cooking and need help: ${inputText}`,
         pantryItems,
         meals,
-        groceryLists
+        groceryLists,
+        { allergies, standardItems }
       );
 
       const assistantMessage: Message = {
@@ -108,17 +141,27 @@ export default function CookingModeScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Cooking Mode</Text>
-      </View>
-
       {steps.length === 0 ? (
         <ScrollView style={styles.content}>
           <View style={styles.inputSection}>
-            <Text style={styles.label}>Enter your recipe:</Text>
+            <Text style={styles.label}>Enter or scan your recipe</Text>
+            <Pressable
+              style={styles.scanButton}
+              onPress={handleScanRecipe}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="camera-outline" size={22} color="#fff" />
+                  <Text style={styles.scanButtonText}>Scan recipe from photo</Text>
+                </>
+              )}
+            </Pressable>
             <TextInput
               style={styles.recipeInput}
-              placeholder="Paste your recipe here..."
+              placeholder="Or paste your recipe here..."
               value={recipe}
               onChangeText={setRecipe}
               multiline
@@ -213,20 +256,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F2F2F7',
   },
-  header: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#E5E5E5',
-  },
-  title: {
-    fontSize: 34,
-    fontWeight: '700',
-    color: '#000000',
-    fontFamily: 'System',
-  },
   content: {
     flex: 1,
     padding: 20,
@@ -239,6 +268,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#000000',
     marginBottom: 12,
+    fontFamily: 'System',
+  },
+  scanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  scanButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
     fontFamily: 'System',
   },
   recipeInput: {
@@ -382,6 +427,3 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
 });
-
-
-

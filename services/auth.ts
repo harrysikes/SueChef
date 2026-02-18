@@ -2,10 +2,10 @@ import {
   signInAnonymously as firebaseSignInAnonymously,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInWithCredential,
+  OAuthProvider,
 } from 'firebase/auth';
 import { auth } from './firebase';
-import * as AppleAuthentication from 'expo-apple-authentication';
-import { signInWithCredential, OAuthProvider } from 'firebase/auth';
 
 export const signInAnonymously = async () => {
   return await firebaseSignInAnonymously(auth);
@@ -21,6 +21,7 @@ export const signUpWithEmail = async (email: string, password: string) => {
 
 export const signInWithApple = async () => {
   try {
+    const AppleAuthentication = require('expo-apple-authentication');
     const credential = await AppleAuthentication.signInAsync({
       requestedScopes: [
         AppleAuthentication.AppleAuthenticationScope.FULL_NAME,

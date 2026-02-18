@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/authStore';
 import { usePantryStore } from '@/store/pantryStore';
 import { useMealStore } from '@/store/mealStore';
 import { useGroceryStore } from '@/store/groceryStore';
+import { useUserPreferencesStore } from '@/store/userPreferencesStore';
 
 interface Message {
   id: string;
@@ -29,6 +30,7 @@ export default function ChatScreen() {
   const { items: pantryItems } = usePantryStore();
   const { meals } = useMealStore();
   const { lists: groceryLists } = useGroceryStore();
+  const { allergies, standardItems } = useUserPreferencesStore();
 
   useEffect(() => {
     scrollViewRef.current?.scrollToEnd({ animated: true });
@@ -53,7 +55,8 @@ export default function ChatScreen() {
         inputText,
         pantryItems,
         meals,
-        groceryLists
+        groceryLists,
+        { allergies, standardItems }
       );
 
       const assistantMessage: Message = {
